@@ -10,7 +10,46 @@ using namespace std;
 
 __device__ int *best_sol;
 __device__ int best_sol_dis;
-void viability_op(int *tour)
+
+__device__ int* mutation(int *tour,curandState *state ){
+	int result[CITIES];
+	int i,j;
+	int crossleft, crossright;
+	float randf = curand_uniform(&state[0]);
+		
+	//int ind = ((int)(randf*100))%CITIES;
+	crossleft = ((int)randf*100)%CITIES;
+	randf = curand_uniform(&state[1]);
+	crossright = ((int)randf*100)%CITIES;
+	if(crossleft > crossright)
+	{
+		int tmp = crossleft;
+		crossleft = crossright;
+		crossright = tmp;
+	}
+	while(crossleft >= crossright)
+	{
+		randf = curand_uniform(&state[1]);
+		crossleft = ((int)randf*100)%CITIES;
+		randf = curand_uniform(&state[1]);
+		crossright = ((int)randf*100)%CITIES;
+	}
+	for(int i = 0; i < CITIES; i++)
+	{
+		result[i] = tour[i];
+	}
+	for(i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
+	{
+		result[i]=tour[j];
+	}
+	for(int i = 0; i < CITIES; i++)
+	{
+		tour[i] = result[i];
+	}
+	return tour;
+	
+}
+__device__ int* viability_op(int *tour)
 {
 	int tempA[CITIES], tempB[CITIES], tempC[CITIES];
 	memset(tempA, -1, CITIES*sizeof(int));
@@ -39,7 +78,8 @@ void viability_op(int *tour)
 		if(count[i] == 0)
 			tempB[i] = i;
 	}
-	int result[CITIES] = {-1};
+	int *result;//[CITIES] = {-1};
+	result = (int*)malloc(CITIES*sizeof(int));
 	int i = 0;
 	while(i < CITIES)
 	{
@@ -70,9 +110,51 @@ void viability_op(int *tour)
 	for(int i = 0; i < CITIES; i++)
 		printf("%d ", result[i]);		
 //tour[i] = result[i];
-	printf("\n\n");
+	return result;
 }
 
+__device__ int* crossover(int *A,int *B, curandState *state){
+	int *C;
+
+	int crossleft, crossright;
+	float randf = curand_uniform(&state[0]);
+		
+	//int ind = ((int)(randf*100))%CITIES;
+	crossleft = ((int)randf*100)%CITIES;
+	randf = curand_uniform(&state[1]);
+	crossright = ((int)randf*100)%CITIES;
+	if(crossleft > crossright)
+	{
+		int tmp = crossleft;
+		crossleft = crossright;
+		crossright = tmp;
+	}
+	while(crossleft >= crossright)
+	{
+		randf = curand_uniform(&state[1]);
+		crossleft = ((int)randf*100)%CITIES;
+		randf = curand_uniform(&state[1]);
+		crossright = ((int)randf*100)%CITIES;
+	}
+	for(int i=crossleft;i<=crossright;i++)
+	A[i]=B[i];
+	
+        printf("\nAfter crossover \n" );
+	for(int i = 0; i < CITIES; i++)
+		printf("%d ", A[i]);	
+		
+        C=viability_op(A);
+        printf("\nAfter viability \n");
+	for(int i = 0; i < CITIES; i++)
+		printf("%d ", C[i]);
+		
+        A=mutation(C, state);
+        printf("\nAfter mutation \n");
+	for(int i = 0; i < CITIES; i++)
+		printf("%d ", A[i]);	
+		
+	return A;	
+}
 __global__ void setup_kernel(curandState *state)
 {
 	unsigned id = blockDim.x * blockIdx.x + threadIdx.x;
