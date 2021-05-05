@@ -8,8 +8,8 @@
 #define CYCLES 10
 using namespace std;
 
-__device__ int *best_sol;
-__device__ int best_sol_dis;
+__device__ volatile int *best_sol;
+__device__ volatile int best_sol_dis;
 
 __device__ int* mutation(int *tour,curandState *state ){
 	int *result;//[CITIES];
@@ -109,7 +109,7 @@ __device__ int* viability_op(int *tour)
 	return result;
 }
 
-__device__ int* crossover(int *A,int *B, curandState *state){
+__device__ void crossover(int *A,int *B, curandState *state){
 	int *C;
 
 	int crossleft, crossright;
@@ -144,11 +144,11 @@ __device__ int* crossover(int *A,int *B, curandState *state){
 		printf("%d ", C[i]);
 		
         A=mutation(C, state);
+		
         printf("\nAfter mutation \n");
 	for(int i = 0; i < CITIES; i++)
 		printf("%d ", A[i]);	
-		
-	return A;	
+			
 }
 __global__ void setup_kernel(curandState *state)
 {
@@ -161,7 +161,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	__shared__ int subPop[SUB_PS][CITIES];
 	__shared__ int fitness[SUB_PS];
 	__shared__ int mean[CITIES];
-	__shared__ int *block_teacher;
+	__shared__ int block_teacher[CITIES];
 	__shared__ int block_teacher_dis;
 
 	unsigned id = threadIdx.x + blockIdx.x * blockDim.x;
@@ -170,8 +170,14 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		subPop[threadIdx.x][j] = gpupopulation[id * CITIES + j];
 
 	if(blockIdx.x == 0 && threadIdx.x == 0)
+	{
 		best_sol_dis = INT_MAX;
-	block_teacher_dis = INT_MAX;
+		best_sol = (volatile int*)malloc(CITIES*sizeof( volatile int));
+	}
+	if(threadIdx.x == 0)
+	{
+		block_teacher_dis = INT_MAX;
+	}
 	__syncthreads();
 	
 	//Calculate fitness
@@ -183,24 +189,27 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	fitness[threadIdx.x] = dis;
 
 	//Global Teacher
-	int old = atomicMin(&best_sol_dis, fitness[threadIdx.x]);
+	int old = atomicMin((int*)&best_sol_dis, fitness[threadIdx.x]);
 	if( old != best_sol_dis )
 	{
-		best_sol = subPop[threadIdx.x];
+		//best_sol = subPop[threadIdx.x];
+		for(int i = 0; i < CITIES; i++)
+			best_sol[i] = subPop[threadIdx.x][i];
 	}	
-	if(threadIdx.x == 0)
+	if(threadIdx.x == 0 && 0)
 		printf("best sol = %d, old = %d\n", best_sol_dis, old);
 	
 	//Subpopulation Teacher
 	old = atomicMin(&block_teacher_dis, fitness[threadIdx.x]);
 	if( old != block_teacher_dis )
 	{
-		block_teacher = subPop[threadIdx.x];
+		for(int i = 0; i < CITIES; i++)
+			block_teacher[i] = subPop[threadIdx.x][i];
 	}
-	if(threadIdx.x == 0)
+	if(threadIdx.x == 0 && 0)
 		printf("Block = %d : Block Teacher = %d\n",blockIdx.x, block_teacher_dis);
 	
-	for(int i = 0; i < CYCLES; i++)
+	for(int c = 0; c < 1; c++)
 	{
 		/*TEACHER PHASE*/
 		//1. Calculate Mean
@@ -219,7 +228,66 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	
 		__syncthreads();
 		//2. Teacher Iteration
-		
+		int *newA;
+		int  *C;
+		int crossleft, crossright;
+		float randf = curand_uniform(&state[threadIdx.x]);
+
+		int *result;//[CITIES];
+		if(threadIdx.x == 0)
+		{
+			printf("entered if\n");
+			//2.1 CROSSOVER
+			/*newA = (int*)malloc(CITIES*sizeof(int));
+			for(int j = 0; j < CITIES; j++)
+				newA[j] = subPop[threadIdx.x][j];
+
+			crossleft = ((int)(randf*100))%CITIES;
+			crossright = ((int)(randf*100))%CITIES;
+			if(crossleft > crossright)
+			{
+				int tmp = crossleft;
+				crossleft = crossright;
+				crossright = tmp;
+			}
+			while(crossleft >= crossright)
+			{
+				crossleft = ((int)(randf*100))%CITIES;
+				crossright = ((int)(randf*100))%CITIES;
+			}
+			for(int j=crossleft;j <= crossright;j++)
+				newA[j] = (int)best_sol[j];
+			printf("performing viability_op\n");
+			C = viability_op(newA);
+			
+			//2.2 MUTATION	
+			printf("performing mutation\n");
+			result = (int*)malloc(CITIES*sizeof(int));
+			
+			crossleft = ((int)(randf*100))%CITIES;
+			crossright = ((int)(randf*100))%CITIES;
+			if(crossleft > crossright)
+			{
+				int tmp = crossleft;
+				crossleft = crossright;
+				crossright = tmp;
+			}
+			while(crossleft >= crossright)
+			{
+				crossleft = ((int)(randf*100))%CITIES;
+				crossright = ((int)(randf*100))%CITIES;
+			}
+			for(int j = 0; j < CITIES; j++)
+			{
+				result[j] = C[j];
+			}
+			for(int i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
+			{
+				result[i]=C[j];
+			}*/
+			printf("\nnewA calculated\n");
+
+		}
 	}
 	
 }
