@@ -17,7 +17,6 @@ __device__ int* mutation(int *tour,curandState *state ){
 	int crossleft, crossright;
 	float randf = curand_uniform(&state[0]);
 		
-	//int ind = ((int)(randf*100))%CITIES;
 	crossleft = ((int)randf*100)%CITIES;
 	randf = curand_uniform(&state[1]);
 	crossright = ((int)randf*100)%CITIES;
