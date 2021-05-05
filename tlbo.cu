@@ -12,13 +12,14 @@ __device__ int *best_sol;
 __device__ int best_sol_dis;
 
 __device__ int* mutation(int *tour,curandState *state ){
-	int result[CITIES];
+	int *result;//[CITIES];
 	int i,j;
 	int crossleft, crossright;
+	result = (int*)malloc(CITIES*sizeof(int));
 	float randf = curand_uniform(&state[0]);
 		
 	crossleft = ((int)randf*100)%CITIES;
-	randf = curand_uniform(&state[1]);
+	randf = curand_uniform(&state[0]);
 	crossright = ((int)randf*100)%CITIES;
 	if(crossleft > crossright)
 	{
@@ -28,9 +29,9 @@ __device__ int* mutation(int *tour,curandState *state ){
 	}
 	while(crossleft >= crossright)
 	{
-		randf = curand_uniform(&state[1]);
+		randf = curand_uniform(&state[0]);
 		crossleft = ((int)randf*100)%CITIES;
-		randf = curand_uniform(&state[1]);
+		randf = curand_uniform(&state[0]);
 		crossright = ((int)randf*100)%CITIES;
 	}
 	for(int i = 0; i < CITIES; i++)
@@ -41,11 +42,7 @@ __device__ int* mutation(int *tour,curandState *state ){
 	{
 		result[i]=tour[j];
 	}
-	for(int i = 0; i < CITIES; i++)
-	{
-		tour[i] = result[i];
-	}
-	return tour;
+	return result;
 	
 }
 __device__ int* viability_op(int *tour)
@@ -106,8 +103,8 @@ __device__ int* viability_op(int *tour)
 			}
 		}
 	}
-	for(int i = 0; i < CITIES; i++)
-		printf("%d ", result[i]);		
+	//for(int i = 0; i < CITIES; i++)
+	//	printf("%d ", result[i]);		
 //tour[i] = result[i];
 	return result;
 }
@@ -118,9 +115,8 @@ __device__ int* crossover(int *A,int *B, curandState *state){
 	int crossleft, crossright;
 	float randf = curand_uniform(&state[0]);
 		
-	//int ind = ((int)(randf*100))%CITIES;
 	crossleft = ((int)randf*100)%CITIES;
-	randf = curand_uniform(&state[1]);
+	randf = curand_uniform(&state[0]);
 	crossright = ((int)randf*100)%CITIES;
 	if(crossleft > crossright)
 	{
@@ -130,13 +126,13 @@ __device__ int* crossover(int *A,int *B, curandState *state){
 	}
 	while(crossleft >= crossright)
 	{
-		randf = curand_uniform(&state[1]);
+		randf = curand_uniform(&state[0]);
 		crossleft = ((int)randf*100)%CITIES;
-		randf = curand_uniform(&state[1]);
+		randf = curand_uniform(&state[0]);
 		crossright = ((int)randf*100)%CITIES;
 	}
 	for(int i=crossleft;i<=crossright;i++)
-	A[i]=B[i];
+		A[i]=B[i];
 	
         printf("\nAfter crossover \n" );
 	for(int i = 0; i < CITIES; i++)
@@ -164,8 +160,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 {
 	__shared__ int subPop[SUB_PS][CITIES];
 	__shared__ int fitness[SUB_PS];
-	__shared__ int mean;
-	__shared__ int sum;
+	__shared__ int mean[CITIES];
 	__shared__ int *block_teacher;
 	__shared__ int block_teacher_dis;
 
@@ -209,14 +204,24 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	{
 		/*TEACHER PHASE*/
 		//1. Calculate Mean
-		sum = 0;
+		memset(mean, 0, CITIES*sizeof(int));
+		for(int j = 0; j < CITIES; j++)
+			atomicAdd(&mean[j], subPop[threadIdx.x][j]);
 		__syncthreads();
-		atomicAdd((int*)&sum, fitness[threadIdx.x]);
 		if(threadIdx.x == 0)
-			mean = sum/SUB_PS;
+		{
+			for(int j = 0; j < CITIES; j++)
+				mean[j] = mean[j]/SUB_PS;
+			int *mean_v = viability_op(mean);
+			for(int j = 0; j < CITIES; j++)
+				mean[j] = mean_v[j];
+		}
+	
 		__syncthreads();
+		//2. Teacher Iteration
+		
 	}
-	printf("mean = %d\n", mean);
+	
 }
 
 
