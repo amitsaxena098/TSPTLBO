@@ -163,7 +163,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	__shared__ int mean[CITIES];
 	__shared__ int block_teacher[CITIES];
 	__shared__ int block_teacher_dis;
-
+	__shared__ int global_dis;
 	unsigned id = threadIdx.x + blockIdx.x * blockDim.x;
 	
 	for(int j = 0; j < CITIES ; j++)
@@ -174,6 +174,9 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		best_sol_dis = INT_MAX;
 		best_sol = (volatile int*)malloc(CITIES*sizeof( volatile int));
 	}
+	global_dis = INT_MAX;
+
+	
 	if(threadIdx.x == 0)
 	{
 		block_teacher_dis = INT_MAX;
@@ -187,15 +190,19 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		dis += gpuDistanceMat[subPop[threadIdx.x][i] * CITIES + subPop[threadIdx.x][i+1]];
 	}
 	fitness[threadIdx.x] = dis;
-
+	__syncthreads();
 	//Global Teacher
-	int old = atomicMin((int*)&best_sol_dis, fitness[threadIdx.x]);
-	if( old != best_sol_dis )
+	int old = atomicMin(&global_dis, fitness[threadIdx.x]);
+	if( old != global_dis )
 	{
 		//best_sol = subPop[threadIdx.x];
+		best_sol_dis = global_dis;
+		printf("%d\n", best_sol_dis);
 		for(int i = 0; i < CITIES; i++)
 			best_sol[i] = subPop[threadIdx.x][i];
-	}	
+	}
+	
+	__syncthreads();
 	if(threadIdx.x == 0 && 0)
 		printf("best sol = %d, old = %d\n", best_sol_dis, old);
 	
@@ -206,18 +213,18 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		for(int i = 0; i < CITIES; i++)
 			block_teacher[i] = subPop[threadIdx.x][i];
 	}
-	if(threadIdx.x == 0 && 0)
+	if(threadIdx.x == 0 )
 		printf("Block = %d : Block Teacher = %d\n",blockIdx.x, block_teacher_dis);
 	
 	for(int c = 0; c < 1; c++)
 	{
-		/*TEACHER PHASE*/
+	//	TEACHER PHASE
 		//1. Calculate Mean
 		memset(mean, 0, CITIES*sizeof(int));
 		for(int j = 0; j < CITIES; j++)
 			atomicAdd(&mean[j], subPop[threadIdx.x][j]);
 		__syncthreads();
-		if(threadIdx.x == 0)
+		if(threadIdx.x == 0 )
 		{
 			for(int j = 0; j < CITIES; j++)
 				mean[j] = mean[j]/SUB_PS;
@@ -226,7 +233,6 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 				mean[j] = mean_v[j];
 		}
 	
-		__syncthreads();
 		//2. Teacher Iteration
 		int *newA;
 		int  *C;
@@ -234,15 +240,16 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		float randf = curand_uniform(&state[threadIdx.x]);
 
 		int *result;//[CITIES];
+		__syncthreads();
 		if(threadIdx.x == 0)
 		{
-			printf("entered if\n");
 			//2.1 CROSSOVER
-			/*newA = (int*)malloc(CITIES*sizeof(int));
+			newA = (int*)malloc(CITIES*sizeof(int));
 			for(int j = 0; j < CITIES; j++)
 				newA[j] = subPop[threadIdx.x][j];
 
 			crossleft = ((int)(randf*100))%CITIES;
+			randf = curand_uniform(&state[threadIdx.x]);
 			crossright = ((int)(randf*100))%CITIES;
 			if(crossleft > crossright)
 			{
@@ -252,19 +259,21 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			}
 			while(crossleft >= crossright)
 			{
+				randf = curand_uniform(&state[threadIdx.x]);
 				crossleft = ((int)(randf*100))%CITIES;
+				randf = curand_uniform(&state[threadIdx.x]);
 				crossright = ((int)(randf*100))%CITIES;
 			}
 			for(int j=crossleft;j <= crossright;j++)
 				newA[j] = (int)best_sol[j];
-			printf("performing viability_op\n");
 			C = viability_op(newA);
 			
 			//2.2 MUTATION	
-			printf("performing mutation\n");
 			result = (int*)malloc(CITIES*sizeof(int));
 			
+			randf = curand_uniform(&state[threadIdx.x]);
 			crossleft = ((int)(randf*100))%CITIES;
+			randf = curand_uniform(&state[threadIdx.x]);
 			crossright = ((int)(randf*100))%CITIES;
 			if(crossleft > crossright)
 			{
@@ -274,7 +283,9 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			}
 			while(crossleft >= crossright)
 			{
+				randf = curand_uniform(&state[threadIdx.x]);
 				crossleft = ((int)(randf*100))%CITIES;
+				randf = curand_uniform(&state[threadIdx.x]);
 				crossright = ((int)(randf*100))%CITIES;
 			}
 			for(int j = 0; j < CITIES; j++)
@@ -284,8 +295,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			for(int i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
 			{
 				result[i]=C[j];
-			}*/
-			printf("\nnewA calculated\n");
+			}
 
 		}
 	}
