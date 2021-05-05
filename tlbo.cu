@@ -5,9 +5,11 @@
 #define PS 100
 #define SUB_PS 4
 #define CITIES 15
+#define CYCLES 10
 using namespace std;
 
-
+__device__ int *best_sol;
+__device__ int best_sol_dis;
 void viability_op(int *tour)
 {
 	int tempA[CITIES], tempB[CITIES], tempC[CITIES];
@@ -80,39 +82,63 @@ __global__ void setup_kernel(curandState *state)
 __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOfCities, curandState *state)
 {
 	__shared__ int subPop[SUB_PS][CITIES];
-//	__shared__ int fitness[SUB_PS];
+	__shared__ int fitness[SUB_PS];
+	__shared__ int mean;
+	__shared__ int sum;
+	__shared__ int *block_teacher;
+	__shared__ int block_teacher_dis;
+
 	unsigned id = threadIdx.x + blockIdx.x * blockDim.x;
+	
 	for(int j = 0; j < CITIES ; j++)
 		subPop[threadIdx.x][j] = gpupopulation[id * CITIES + j];
 
+	if(blockIdx.x == 0 && threadIdx.x == 0)
+		best_sol_dis = INT_MAX;
+	block_teacher_dis = INT_MAX;
 	__syncthreads();
-	/*int count[CITIES] = {0};
-	for(int i = 0; i < CITIES; i++)
-	{
-		float randf = curand_uniform(&state[id]);
-		
-		int ind = ((int)(randf*100))%CITIES;
-		while(count[ind])
-		{
-			randf = curand_uniform(&state[id]);
-		
-			ind = ((int)(randf*100))%CITIES;
-		
-		}
-		subPop[id][i] = ind;
-		count[ind] = 1; 
-	}*/
+	
 	//Calculate fitness
 	int dis = 0;
 	for(int i = 0; i < CITIES-1 ; i++)
 	{
-		//printf("%d\n",gpuDistanceMat[subPop[threadIdx.x][i] * CITIES + subPop[threadIdx.x][i+1]]);
-		//printf("%d, %d\n", subPop[threadIdx.x][i], subPop[threadIdx.x][i+1]);
 		dis += gpuDistanceMat[subPop[threadIdx.x][i] * CITIES + subPop[threadIdx.x][i+1]];
 	}
+	fitness[threadIdx.x] = dis;
 
-	printf("dis = %d\n", dis);
+	//Global Teacher
+	int old = atomicMin(&best_sol_dis, fitness[threadIdx.x]);
+	if( old != best_sol_dis )
+	{
+		best_sol = subPop[threadIdx.x];
+	}	
+	if(threadIdx.x == 0)
+		printf("best sol = %d, old = %d\n", best_sol_dis, old);
+	
+	//Subpopulation Teacher
+	old = atomicMin(&block_teacher_dis, fitness[threadIdx.x]);
+	if( old != block_teacher_dis )
+	{
+		block_teacher = subPop[threadIdx.x];
+	}
+	if(threadIdx.x == 0)
+		printf("Block = %d : Block Teacher = %d\n",blockIdx.x, block_teacher_dis);
+	
+	for(int i = 0; i < CYCLES; i++)
+	{
+		/*TEACHER PHASE*/
+		//1. Calculate Mean
+		sum = 0;
+		__syncthreads();
+		atomicAdd((int*)&sum, fitness[threadIdx.x]);
+		if(threadIdx.x == 0)
+			mean = sum/SUB_PS;
+		__syncthreads();
+	}
+	printf("mean = %d\n", mean);
 }
+
+
 void createPopulation(int *population)
 {
 	for(int j = 0; j < PS; j++)
