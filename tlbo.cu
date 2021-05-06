@@ -4,7 +4,7 @@
 #include<curand_kernel.h>
 #define PS 100
 #define SUB_PS 4
-#define CITIES 15
+#define CITIES 42
 #define CYCLES 10
 #define CROSS_GLOBALTEACHER 0
 #define CROSS_LOCALTEACHER 1
@@ -15,7 +15,8 @@ using namespace std;
 
 __device__ volatile int *best_sol;
 __device__ volatile int best_sol_dis;
-
+__device__ volatile int var = 100;
+__device__ volatile int itr = 100;
 __device__ int* mutation(int *tour,curandState *state ){
 	int *result;//[CITIES];
 	int i,j;
@@ -194,6 +195,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	{
 		dis += gpuDistanceMat[subPop[threadIdx.x][i] * CITIES + subPop[threadIdx.x][i+1]];
 	}
+	dis += gpuDistanceMat[subPop[threadIdx.x][CITIES-1] * CITIES + subPop[threadIdx.x][0]];
 	fitness[threadIdx.x] = dis;
 	__syncthreads();
 	//Global Teacher
@@ -219,18 +221,20 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			block_teacher[i] = subPop[threadIdx.x][i];
 	}
 	//PUT BARRIER HERE
-
+	atomicDec((unsigned int*)&var, 0);
+	while( var != 0 );
 	//
 	if(threadIdx.x == 0 && best_sol_dis == block_teacher_dis)
 	{
 		
 		printf("%d\n", best_sol_dis);
 		for(int i = 0; i < CITIES; i++)
-			best_sol[i] = subPop[threadIdx.x][i];
+			best_sol[i] = block_teacher[i];
+		var = 100;
 	}
 	if(threadIdx.x == 0 )
 		printf("Block = %d : Block Teacher = %d, Global teacher = %d\n",blockIdx.x, block_teacher_dis, best_sol_dis);
-	for(int c = 0; c < 1; c++)
+	for(int c = 0; c < 100; c++)
 	{
 	//	TEACHER PHASE
 		//1. Calculate Mean
@@ -259,7 +263,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		{
 			case CROSS_GLOBALTEACHER:
 					{
-						printf("Block %d : subPop x globalTeacher\n", blockIdx.x);
+						//printf("Block %d : subPop x globalTeacher\n", blockIdx.x);
 						//2.1 CROSSOVER
 						newA = (int*)malloc(CITIES*sizeof(int));
 						for(int j = 0; j < CITIES; j++)
@@ -322,7 +326,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 					}
 			case CROSS_LOCALTEACHER:
 					{
-						printf("Block %d : subPop x localTeacher\n", blockIdx.x);
+						//printf("Block %d : subPop x localTeacher\n", blockIdx.x);
 						//2.1 CROSSOVER
 						newA = (int*)malloc(CITIES*sizeof(int));
 						for(int j = 0; j < CITIES; j++)
@@ -384,7 +388,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 					}
 				case CROSS_MEAN:
 					{
-						printf("Block %d : subPop x mean\n", blockIdx.x);
+						//printf("Block %d : subPop x mean\n", blockIdx.x);
 						//2.1 CROSSOVER
 						newA = (int*)malloc(CITIES*sizeof(int));
 						for(int j = 0; j < CITIES; j++)
@@ -445,7 +449,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 					}
 				case CROSS_LOCALMEAN:
 					{
-						printf("Block %d : localTeacher x mean\n", blockIdx.x);
+						//printf("Block %d : localTeacher x mean\n", blockIdx.x);
 						//2.1 CROSSOVER
 						newA = (int*)malloc(CITIES*sizeof(int));
 						for(int j = 0; j < CITIES; j++)
@@ -592,7 +596,39 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			for(int i = 0; i < CITIES; i++)
 				subPop[threadIdx.x][i] = newA[i];
 		}
-		printf("All operations performed : %d\n", id);
+
+		
+		atomicMin((int*)&best_sol_dis, fitness[threadIdx.x]);
+		old = atomicMin(&block_teacher_dis, fitness[threadIdx.x]);
+		if( old != block_teacher_dis )
+		{
+			for(int i = 0; i < CITIES; i++)
+				block_teacher[i] = subPop[threadIdx.x][i];
+		}
+		//PUT BARRIER HERE
+		atomicDec((unsigned int*)&var, 0);
+		while( var != 0 );
+		//
+		if(threadIdx.x == 0 && best_sol_dis == block_teacher_dis)
+		{
+		
+			printf("%d\n", best_sol_dis);
+			for(int i = 0; i < CITIES; i++)
+				best_sol[i] = block_teacher[i];
+			var = 100;
+		}
+
+		//printf("All operations performed : %d\n", id);
+		atomicDec((unsigned int*)&itr, 0);
+		while(itr != 0);
+	}
+
+	if(blockIdx.x == 0 && threadIdx.x == 0)
+	{
+		printf("Best Solution :: %d\n", best_sol_dis);
+		for(int i = 0; i < CITIES; i++)
+			printf("%d ", best_sol[i]);
+		printf("\n");
 	}
 	
 }
