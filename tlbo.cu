@@ -6,6 +6,11 @@
 #define SUB_PS 4
 #define CITIES 15
 #define CYCLES 10
+#define CROSS_GLOBALTEACHER 0
+#define CROSS_LOCALTEACHER 1
+#define CROSS_MEAN 2
+#define CROSS_LOCALMEAN 3
+
 using namespace std;
 
 __device__ volatile int *best_sol;
@@ -241,63 +246,257 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 
 		int *result;//[CITIES];
 		__syncthreads();
-		if(threadIdx.x == 0)
+		switch(threadIdx.x) //threadIdx.x == CROSS_GLOBALTEACHER)
 		{
-			//2.1 CROSSOVER
-			newA = (int*)malloc(CITIES*sizeof(int));
-			for(int j = 0; j < CITIES; j++)
-				newA[j] = subPop[threadIdx.x][j];
+			case CROSS_GLOBALTEACHER:
+					{
+						printf("Block %d : subPop x globalTeacher\n", blockIdx.x);
+						//2.1 CROSSOVER
+						newA = (int*)malloc(CITIES*sizeof(int));
+						for(int j = 0; j < CITIES; j++)
+							newA[j] = subPop[threadIdx.x][j];
 
-			crossleft = ((int)(randf*100))%CITIES;
-			randf = curand_uniform(&state[threadIdx.x]);
-			crossright = ((int)(randf*100))%CITIES;
-			if(crossleft > crossright)
-			{
-				int tmp = crossleft;
-				crossleft = crossright;
-				crossright = tmp;
-			}
-			while(crossleft >= crossright)
-			{
-				randf = curand_uniform(&state[threadIdx.x]);
-				crossleft = ((int)(randf*100))%CITIES;
-				randf = curand_uniform(&state[threadIdx.x]);
-				crossright = ((int)(randf*100))%CITIES;
-			}
-			for(int j=crossleft;j <= crossright;j++)
-				newA[j] = (int)best_sol[j];
-			C = viability_op(newA);
-			
-			//2.2 MUTATION	
-			result = (int*)malloc(CITIES*sizeof(int));
-			
-			randf = curand_uniform(&state[threadIdx.x]);
-			crossleft = ((int)(randf*100))%CITIES;
-			randf = curand_uniform(&state[threadIdx.x]);
-			crossright = ((int)(randf*100))%CITIES;
-			if(crossleft > crossright)
-			{
-				int tmp = crossleft;
-				crossleft = crossright;
-				crossright = tmp;
-			}
-			while(crossleft >= crossright)
-			{
-				randf = curand_uniform(&state[threadIdx.x]);
-				crossleft = ((int)(randf*100))%CITIES;
-				randf = curand_uniform(&state[threadIdx.x]);
-				crossright = ((int)(randf*100))%CITIES;
-			}
-			for(int j = 0; j < CITIES; j++)
-			{
-				result[j] = C[j];
-			}
-			for(int i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
-			{
-				result[i]=C[j];
-			}
+						crossleft = ((int)(randf*100))%CITIES;
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossright = ((int)(randf*100))%CITIES;
+						if(crossleft > crossright)
+						{
+							int tmp = crossleft;
+							crossleft = crossright;
+							crossright = tmp;
+						}
+						while(crossleft >= crossright)
+						{
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossleft = ((int)(randf*100))%CITIES;
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossright = ((int)(randf*100))%CITIES;
+						}
+						for(int j=crossleft;j <= crossright;j++)
+							newA[j] = (int)best_sol[j];
+						C = viability_op(newA);
+						
+						//2.2 MUTATION	
+						result = (int*)malloc(CITIES*sizeof(int));
+						
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossleft = ((int)(randf*100))%CITIES;
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossright = ((int)(randf*100))%CITIES;
+						if(crossleft > crossright)
+						{
+							int tmp = crossleft;
+							crossleft = crossright;
+							crossright = tmp;
+						}
+						while(crossleft >= crossright)
+						{
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossleft = ((int)(randf*100))%CITIES;
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossright = ((int)(randf*100))%CITIES;
+						}
+						for(int j = 0; j < CITIES; j++)
+						{
+							result[j] = C[j];
+						}
+						for(int i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
+						{
+							result[i]=C[j];
+						}
 
+						for(int i = 0; i < CITIES; i++)
+							subPop[threadIdx.x][i] = result[i];
+						break;
+					}
+			case CROSS_LOCALTEACHER:
+					{
+						printf("Block %d : subPop x localTeacher\n", blockIdx.x);
+						//2.1 CROSSOVER
+						newA = (int*)malloc(CITIES*sizeof(int));
+						for(int j = 0; j < CITIES; j++)
+							newA[j] = subPop[threadIdx.x][j];
+
+						crossleft = ((int)(randf*100))%CITIES;
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossright = ((int)(randf*100))%CITIES;
+						if(crossleft > crossright)
+						{
+							int tmp = crossleft;
+							crossleft = crossright;
+							crossright = tmp;
+						}
+						while(crossleft >= crossright)
+						{
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossleft = ((int)(randf*100))%CITIES;
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossright = ((int)(randf*100))%CITIES;
+						}
+						for(int j=crossleft;j <= crossright;j++)
+							newA[j] = block_teacher[j];
+						C = viability_op(newA);
+						
+						//2.2 MUTATION	
+						result = (int*)malloc(CITIES*sizeof(int));
+						
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossleft = ((int)(randf*100))%CITIES;
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossright = ((int)(randf*100))%CITIES;
+						if(crossleft > crossright)
+						{
+							int tmp = crossleft;
+							crossleft = crossright;
+							crossright = tmp;
+						}
+						while(crossleft >= crossright)
+						{
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossleft = ((int)(randf*100))%CITIES;
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossright = ((int)(randf*100))%CITIES;
+						}
+						for(int j = 0; j < CITIES; j++)
+						{
+							result[j] = C[j];
+						}
+						for(int i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
+						{
+							result[i]=C[j];
+						}
+
+						for(int i = 0; i < CITIES; i++)
+							subPop[threadIdx.x][i] = result[i];
+
+						break;
+					}
+				case CROSS_MEAN:
+					{
+						printf("Block %d : subPop x mean\n", blockIdx.x);
+						//2.1 CROSSOVER
+						newA = (int*)malloc(CITIES*sizeof(int));
+						for(int j = 0; j < CITIES; j++)
+							newA[j] = subPop[threadIdx.x][j];
+
+						crossleft = ((int)(randf*100))%CITIES;
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossright = ((int)(randf*100))%CITIES;
+						if(crossleft > crossright)
+						{
+							int tmp = crossleft;
+							crossleft = crossright;
+							crossright = tmp;
+						}
+						while(crossleft >= crossright)
+						{
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossleft = ((int)(randf*100))%CITIES;
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossright = ((int)(randf*100))%CITIES;
+						}
+						for(int j=crossleft;j <= crossright;j++)
+							newA[j] = mean[j];
+						C = viability_op(newA);
+						
+						//2.2 MUTATION	
+						result = (int*)malloc(CITIES*sizeof(int));
+						
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossleft = ((int)(randf*100))%CITIES;
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossright = ((int)(randf*100))%CITIES;
+						if(crossleft > crossright)
+						{
+							int tmp = crossleft;
+							crossleft = crossright;
+							crossright = tmp;
+						}
+						while(crossleft >= crossright)
+						{
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossleft = ((int)(randf*100))%CITIES;
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossright = ((int)(randf*100))%CITIES;
+						}
+						for(int j = 0; j < CITIES; j++)
+						{
+							result[j] = C[j];
+						}
+						for(int i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
+						{
+							result[i]=C[j];
+						}
+
+						for(int i = 0; i < CITIES; i++)
+							subPop[threadIdx.x][i] = result[i];
+						break;
+					}
+				case CROSS_LOCALMEAN:
+					{
+						printf("Block %d : localTeacher x mean\n", blockIdx.x);
+						//2.1 CROSSOVER
+						newA = (int*)malloc(CITIES*sizeof(int));
+						for(int j = 0; j < CITIES; j++)
+							newA[j] = mean[j];
+
+						crossleft = ((int)(randf*100))%CITIES;
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossright = ((int)(randf*100))%CITIES;
+						if(crossleft > crossright)
+						{
+							int tmp = crossleft;
+							crossleft = crossright;
+							crossright = tmp;
+						}
+						while(crossleft >= crossright)
+						{
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossleft = ((int)(randf*100))%CITIES;
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossright = ((int)(randf*100))%CITIES;
+						}
+						for(int j=crossleft;j <= crossright;j++)
+							newA[j] = block_teacher[j];
+						C = viability_op(newA);
+						
+						//2.2 MUTATION	
+						result = (int*)malloc(CITIES*sizeof(int));
+						
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossleft = ((int)(randf*100))%CITIES;
+						randf = curand_uniform(&state[threadIdx.x]);
+						crossright = ((int)(randf*100))%CITIES;
+						if(crossleft > crossright)
+						{
+							int tmp = crossleft;
+							crossleft = crossright;
+							crossright = tmp;
+						}
+						while(crossleft >= crossright)
+						{
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossleft = ((int)(randf*100))%CITIES;
+							randf = curand_uniform(&state[threadIdx.x]);
+							crossright = ((int)(randf*100))%CITIES;
+						}
+						for(int j = 0; j < CITIES; j++)
+						{
+							result[j] = C[j];
+						}
+						for(int i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
+						{
+							result[i]=C[j];
+						}
+
+						for(int i = 0; i < CITIES; i++)
+							subPop[threadIdx.x][i] = result[i];
+						break;
+					}
+		
 		}
+
+		printf("All operations performed : %d\n", id);
 	}
 	
 }
