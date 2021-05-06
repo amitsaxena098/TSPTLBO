@@ -168,7 +168,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	__shared__ int mean[CITIES];
 	__shared__ int block_teacher[CITIES];
 	__shared__ int block_teacher_dis;
-	__shared__ int global_dis;
+//	__shared__ int global_dis;
 	unsigned id = threadIdx.x + blockIdx.x * blockDim.x;
 	
 	for(int j = 0; j < CITIES ; j++)
@@ -179,7 +179,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		best_sol_dis = INT_MAX;
 		best_sol = (volatile int*)malloc(CITIES*sizeof( volatile int));
 	}
-	global_dis = INT_MAX;
+//	global_dis = INT_MAX;
 
 	
 	if(threadIdx.x == 0)
@@ -197,30 +197,39 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	fitness[threadIdx.x] = dis;
 	__syncthreads();
 	//Global Teacher
-	int old = atomicMin(&global_dis, fitness[threadIdx.x]);
-	if( old != global_dis )
+	atomicMin((int*)&best_sol_dis, fitness[threadIdx.x]);
+	/*if( old != global_dis )
 	{
 		//best_sol = subPop[threadIdx.x];
 		best_sol_dis = global_dis;
 		printf("%d\n", best_sol_dis);
 		for(int i = 0; i < CITIES; i++)
 			best_sol[i] = subPop[threadIdx.x][i];
-	}
+	}*/
 	
 	__syncthreads();
 	if(threadIdx.x == 0 && 0)
-		printf("best sol = %d, old = %d\n", best_sol_dis, old);
+		printf("best sol = %d\n", best_sol_dis);
 	
 	//Subpopulation Teacher
-	old = atomicMin(&block_teacher_dis, fitness[threadIdx.x]);
+	int old = atomicMin(&block_teacher_dis, fitness[threadIdx.x]);
 	if( old != block_teacher_dis )
 	{
 		for(int i = 0; i < CITIES; i++)
 			block_teacher[i] = subPop[threadIdx.x][i];
 	}
+	//PUT BARRIER HERE
+
+	//
+	if(threadIdx.x == 0 && best_sol_dis == block_teacher_dis)
+	{
+		
+		printf("%d\n", best_sol_dis);
+		for(int i = 0; i < CITIES; i++)
+			best_sol[i] = subPop[threadIdx.x][i];
+	}
 	if(threadIdx.x == 0 )
 		printf("Block = %d : Block Teacher = %d, Global teacher = %d\n",blockIdx.x, block_teacher_dis, best_sol_dis);
-	
 	for(int c = 0; c < 1; c++)
 	{
 	//	TEACHER PHASE
