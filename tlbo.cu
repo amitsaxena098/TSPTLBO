@@ -219,7 +219,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			block_teacher[i] = subPop[threadIdx.x][i];
 	}
 	if(threadIdx.x == 0 )
-		printf("Block = %d : Block Teacher = %d\n",blockIdx.x, block_teacher_dis);
+		printf("Block = %d : Block Teacher = %d, Global teacher = %d\n",blockIdx.x, block_teacher_dis, best_sol_dis);
 	
 	for(int c = 0; c < 1; c++)
 	{
@@ -306,7 +306,11 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 						}
 
 						for(int i = 0; i < CITIES; i++)
-							subPop[threadIdx.x][i] = result[i];
+							newA[i] = result[i];
+
+						free(newA);
+						free(C);
+						free(result);
 						break;
 					}
 			case CROSS_LOCALTEACHER:
@@ -367,7 +371,10 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 						}
 
 						for(int i = 0; i < CITIES; i++)
-							subPop[threadIdx.x][i] = result[i];
+							newA[i] = result[i];
+						free(newA);
+						free(C);
+						free(result);
 
 						break;
 					}
@@ -429,7 +436,10 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 						}
 
 						for(int i = 0; i < CITIES; i++)
-							subPop[threadIdx.x][i] = result[i];
+							newA[i] = result[i];
+						free(newA);
+						free(C);
+						free(result);
 						break;
 					}
 				case CROSS_LOCALMEAN:
@@ -490,12 +500,15 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 						}
 
 						for(int i = 0; i < CITIES; i++)
-							subPop[threadIdx.x][i] = result[i];
+							newA[i] = result[i];
+						free(newA);
+						free(C);
+						free(result);
 						break;
 					}
 		
 		}
-
+		
 		printf("All operations performed : %d\n", id);
 	}
 	
