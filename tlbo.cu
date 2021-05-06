@@ -243,7 +243,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		int  *C;
 		int crossleft, crossright;
 		float randf = curand_uniform(&state[threadIdx.x]);
-
+		int newA_dis = 0;;
 		int *result;//[CITIES];
 		__syncthreads();
 		switch(threadIdx.x) //threadIdx.x == CROSS_GLOBALTEACHER)
@@ -307,10 +307,8 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 
 						for(int i = 0; i < CITIES; i++)
 							newA[i] = result[i];
-
-						free(newA);
-						free(C);
-						free(result);
+						
+					
 						break;
 					}
 			case CROSS_LOCALTEACHER:
@@ -372,9 +370,6 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 
 						for(int i = 0; i < CITIES; i++)
 							newA[i] = result[i];
-						free(newA);
-						free(C);
-						free(result);
 
 						break;
 					}
@@ -437,9 +432,6 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 
 						for(int i = 0; i < CITIES; i++)
 							newA[i] = result[i];
-						free(newA);
-						free(C);
-						free(result);
 						break;
 					}
 				case CROSS_LOCALMEAN:
@@ -501,14 +493,96 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 
 						for(int i = 0; i < CITIES; i++)
 							newA[i] = result[i];
-						free(newA);
-						free(C);
-						free(result);
 						break;
 					}
 		
 		}
+		for(int i = 0; i < CITIES-1; i++)
+			newA_dis += gpuDistanceMat[newA[i] * CITIES + newA[i+1]];
+
+		newA_dis += gpuDistanceMat[newA[CITIES-1] * CITIES + newA[0]];
+		if(fitness[threadIdx.x] > newA_dis)
+		{
+			fitness[threadIdx.x] = newA_dis;
+			for(int i = 0; i < CITIES; i++)
+				subPop[threadIdx.x][i] = newA[i];
+		}
 		
+		/* LEARNER PHASE */
+		
+		randf = curand_uniform(&state[threadIdx.x]);
+		int randomK = ((int)(randf*100))%4;
+		while( randomK == threadIdx.x )
+		{
+			randf = curand_uniform(&state[threadIdx.x]);
+			randomK = ((int)(randf*100))%4;
+		}
+
+		for(int i = 0; i < CITIES; i++)
+			newA[i] = subPop[threadIdx.x][i];
+		randf = curand_uniform(&state[threadIdx.x]);
+		crossleft = ((int)(randf*100))%CITIES;
+		randf = curand_uniform(&state[threadIdx.x]);
+		crossright = ((int)(randf*100))%CITIES;
+		if(crossleft > crossright)
+		{
+			int tmp = crossleft;
+			crossleft = crossright;
+			crossright = tmp;
+		}
+		while(crossleft >= crossright)
+		{
+			randf = curand_uniform(&state[threadIdx.x]);
+			crossleft = ((int)(randf*100))%CITIES;
+			randf = curand_uniform(&state[threadIdx.x]);
+			crossright = ((int)(randf*100))%CITIES;
+		}
+		for(int j=crossleft;j <= crossright;j++)
+			newA[j] = subPop[randomK][j];
+		C = viability_op(newA);
+		
+		//2.2 MUTATION	
+		
+		randf = curand_uniform(&state[threadIdx.x]);
+		crossleft = ((int)(randf*100))%CITIES;
+		randf = curand_uniform(&state[threadIdx.x]);
+		crossright = ((int)(randf*100))%CITIES;
+		if(crossleft > crossright)
+		{
+			int tmp = crossleft;
+			crossleft = crossright;
+			crossright = tmp;
+		}
+		while(crossleft >= crossright)
+		{
+			randf = curand_uniform(&state[threadIdx.x]);
+			crossleft = ((int)(randf*100))%CITIES;
+			randf = curand_uniform(&state[threadIdx.x]);
+			crossright = ((int)(randf*100))%CITIES;
+		}
+		for(int j = 0; j < CITIES; j++)
+		{
+			result[j] = C[j];
+		}
+		for(int i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
+		{
+			result[i]=C[j];
+		}
+
+		for(int i = 0; i < CITIES; i++)
+			newA[i] = result[i];
+
+		newA_dis = 0;
+		for(int i = 0; i < CITIES-1; i++)
+			newA_dis += gpuDistanceMat[newA[i] * CITIES + newA[i+1]];
+
+		newA_dis += gpuDistanceMat[newA[CITIES-1] * CITIES + newA[0]];
+		if(fitness[threadIdx.x] > newA_dis)
+		{
+			fitness[threadIdx.x] = newA_dis;
+			for(int i = 0; i < CITIES; i++)
+				subPop[threadIdx.x][i] = newA[i];
+		}
 		printf("All operations performed : %d\n", id);
 	}
 	
