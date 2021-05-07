@@ -4,8 +4,8 @@
 #include<curand_kernel.h>
 #define PS 100
 #define SUB_PS 4
-#define CITIES 280
-#define CYCLES 100
+#define CITIES 48
+#define CYCLES 1000
 #define CROSS_GLOBALTEACHER 0
 #define CROSS_LOCALTEACHER 1
 #define CROSS_MEAN 2
@@ -634,20 +634,51 @@ void createPopulation(int *population)
 	}
 	
 }
-int main()
+int main(int argc, char **argv)
 {
 	srand(time(NULL));
+	FILE *input;
+
+	input = fopen(argv[1], "r");
+	
+	if(input == NULL)
+		printf("error: failed to open input file\n");
+
+	
 	curandState *d_state;
 	cudaMalloc(&d_state, sizeof(curandState));
 	
 	int numberOfCities;
-	scanf("%d", &numberOfCities);
+	vector<pair<float, float> > points;
+	
+	fscanf(input, "%d", &numberOfCities);
+	
+	for(int i = 0; i < numberOfCities; i++)
+	{
+		float x , y;
+		fscanf(input, "%f", &x);
+		fscanf(input, "%f", &y);
+
+		points.push_back(make_pair(x, y));
+	}
+
 	int *distanceMat ;//= (int*)malloc(numberOfCities*numberOfCities*sizeof(int));
 	cudaHostAlloc(&distanceMat, numberOfCities*numberOfCities*sizeof(int), cudaHostAllocMapped);
-	for(int i = 0; i < numberOfCities; i++)
+/*	for(int i = 0; i < numberOfCities; i++)
 	{
 		for(int j = 0; j < numberOfCities; j++)
 			scanf("%d", &distanceMat[i*numberOfCities+j]);
+	}*/
+	for(int i = 0; i < numberOfCities; i++)
+	{
+		for(int j = 0; j < numberOfCities; j++)
+		{
+			int ed;
+			int x = (points[j].first - points[i].first)*(points[j].first - points[i].first);
+			int y = (points[j].second - points[i].second)*(points[j].second - points[i].second);
+			ed = sqrt(x+y);
+			distanceMat[i*numberOfCities+j] = ed;
+		}
 	}
 	
 	int noOfBlocks = ceil((float)PS/SUB_PS);
