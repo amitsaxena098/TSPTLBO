@@ -4,8 +4,8 @@
 #include<curand_kernel.h>
 #define PS 100
 #define SUB_PS 4
-#define CITIES 42
-#define CYCLES 10
+#define CITIES 194
+#define CYCLES 400
 #define CROSS_GLOBALTEACHER 0
 #define CROSS_LOCALTEACHER 1
 #define CROSS_MEAN 2
@@ -58,7 +58,8 @@ __device__ int* viability_op(int *tour)
 	memset(tempB, -1, CITIES*sizeof(int));
 	memset(tempC, -1, CITIES*sizeof(int));
 
-	int count[CITIES] = {0};
+	int count[CITIES];
+	memset(count, 0, CITIES*sizeof(int));
 	for(int i = 0; i < CITIES; i++)
 		count[tour[i]]++;
 
@@ -234,10 +235,13 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	}
 	if(threadIdx.x == 0 )
 		printf("Block = %d : Block Teacher = %d, Global teacher = %d\n",blockIdx.x, block_teacher_dis, best_sol_dis);
-	for(int c = 0; c < 100; c++)
+	for(int c = 0; c < CYCLES; c++)
 	{
 	//	TEACHER PHASE
 		//1. Calculate Mean
+		if(blockIdx.x == 0 && threadIdx.x == 0 )
+			itr = 100;
+		while( itr != 100 );
 		memset(mean, 0, CITIES*sizeof(int));
 		for(int j = 0; j < CITIES; j++)
 			atomicAdd(&mean[j], subPop[threadIdx.x][j]);
@@ -250,7 +254,6 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			for(int j = 0; j < CITIES; j++)
 				mean[j] = mean_v[j];
 		}
-	
 		//2. Teacher Iteration
 		int *newA;
 		int  *C;
@@ -550,10 +553,71 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			randf = curand_uniform(&state[threadIdx.x]);
 			crossright = ((int)(randf*100))%CITIES;
 		}
+		if(newA == NULL)
+			printf("-----newA is null-----\n");
 		for(int j=crossleft;j <= crossright;j++)
 			newA[j] = subPop[randomK][j];
-		C = viability_op(newA);
-		
+		//C = viability_op(newA);
+		int tempA[CITIES], tempB[CITIES], tempC[CITIES];
+		memset(tempA, -1, CITIES*sizeof(int));
+		memset(tempB, -1, CITIES*sizeof(int));
+		memset(tempC, -1, CITIES*sizeof(int));
+
+		int count[CITIES];
+		memset(count, 0, CITIES*sizeof(int));
+		for(int i = 0; i < CITIES; i++)
+			count[newA[i]]++;
+
+		for(int i = CITIES-1; i >= 0; i--)
+		{
+			if(count[newA[i]] > 1)
+			{
+				tempA[i] = newA[i];
+				count[newA[i]] = -1;
+			}
+			if(count[newA[i]] == 1)
+			{
+				tempC[i] = newA[i];
+				count[newA[i]] = -1;
+			}
+		}	
+		for(int i = 0; i < CITIES; i++)
+		{
+			if(count[i] == 0)
+				tempB[i] = i;
+		}
+		int *result2;//[CITIES] = {-1};
+		result2 = (int*)malloc(CITIES*sizeof(int));
+		int i = 0;
+		while(i < CITIES)
+		{
+			result2[i] = tempA[i];
+			if(result2[i] == -1) result2[i] = tempC[i];
+			//	result[i] = tempB[i];
+			i++;
+		}
+		int j = 0;
+		i = 0;
+		while( i < CITIES)
+		{
+			if(tempB[i] == -1)
+				i++;
+			else
+			{
+				if(result2[j] == -1)
+				{
+					result2[j] = tempB[i];
+					j++; i++;
+				}
+				else
+				{
+					j++;
+				}
+			}
+		}
+
+		for(int j = 0; j < CITIES; j++)
+			newA[j] = result2[j];
 		//2.2 MUTATION	
 		
 		randf = curand_uniform(&state[threadIdx.x]);
@@ -573,13 +637,16 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			randf = curand_uniform(&state[threadIdx.x]);
 			crossright = ((int)(randf*100))%CITIES;
 		}
+		int CC[CITIES];
+		for(int j = 0; j < CITIES; j++)
+			CC[j] = newA[j];
 		for(int j = 0; j < CITIES; j++)
 		{
-			result[j] = C[j];
+			result[j] = CC[j];
 		}
 		for(int i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
 		{
-			result[i]=C[j];
+			result[i]=CC[j];
 		}
 
 		for(int i = 0; i < CITIES; i++)
@@ -612,7 +679,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		if(threadIdx.x == 0 && best_sol_dis == block_teacher_dis)
 		{
 		
-			printf("%d\n", best_sol_dis);
+		//	printf("%d : %d\n",c, best_sol_dis);
 			for(int i = 0; i < CITIES; i++)
 				best_sol[i] = block_teacher[i];
 			var = 100;
@@ -621,6 +688,10 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		//printf("All operations performed : %d\n", id);
 		atomicDec((unsigned int*)&itr, 0);
 		while(itr != 0);
+		free(result);
+		free(result2);
+		free(newA);
+		free(C);
 	}
 
 	if(blockIdx.x == 0 && threadIdx.x == 0)
