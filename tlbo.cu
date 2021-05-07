@@ -4,8 +4,8 @@
 #include<curand_kernel.h>
 #define PS 100
 #define SUB_PS 4
-#define CITIES 48
-#define CYCLES 1000
+#define CITIES 1002
+#define CYCLES 2000
 #define CROSS_GLOBALTEACHER 0
 #define CROSS_LOCALTEACHER 1
 #define CROSS_MEAN 2
@@ -15,8 +15,8 @@ using namespace std;
 
 __device__ volatile int *best_sol;
 __device__ volatile int best_sol_dis;
-__device__ volatile int var = 100;
-__device__ volatile int itr = 100;
+__device__ volatile unsigned int var = 100;
+__device__ volatile unsigned int itr = 100;
 
 __device__ void viability_op(int *tour)
 {
@@ -108,7 +108,6 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	{
 		block_teacher_dis = INT_MAX;
 	}
-	__syncthreads();
 	
 	//Calculate fitness
 	int dis = 0;
@@ -118,11 +117,9 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	}
 	dis += gpuDistanceMat[subPop[threadIdx.x][CITIES-1] * CITIES + subPop[threadIdx.x][0]];
 	fitness[threadIdx.x] = dis;
-	__syncthreads();
 	//Global Teacher
 	atomicMin((int*)&best_sol_dis, fitness[threadIdx.x]);
 	
-	__syncthreads();
 	if(threadIdx.x == 0 && 0)
 		printf("best sol = %d\n", best_sol_dis);
 	
@@ -134,12 +131,13 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			block_teacher[i] = subPop[threadIdx.x][i];
 	}
 	//PUT BARRIER HERE
-	atomicDec((unsigned int*)&var, 0);
+	//atomicDec((unsigned int*)&var, 0);
+	atomicAdd((int*)&var, -1);
+//	printf("var = %d ", var);
 	while( var != 0 );
 	//
 	if(threadIdx.x == 0 && best_sol_dis == block_teacher_dis)
 	{
-		
 		printf("%d\n", best_sol_dis);
 		for(int i = 0; i < CITIES; i++)
 			best_sol[i] = block_teacher[i];
@@ -434,8 +432,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 				subPop[threadIdx.x][i] = newA[i];
 		}
 		
-		/* LEARNER PHASE */
-		
+	//	 LEARNER PHASE 	
 		randf = curand_uniform(&state[threadIdx.x]);
 		int randomK = ((int)(randf*100))%4;
 		while( randomK == threadIdx.x )
@@ -467,7 +464,8 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			printf("-----newA is null-----\n");
 		for(int j=crossleft;j <= crossright;j++)
 			newA[j] = subPop[randomK][j];
-		//C = viability_op(newA);
+	//	viability_op(newA);
+	//	C = newA;
 		int tempA[CITIES], tempB[CITIES], tempC[CITIES];
 		memset(tempA, -1, CITIES*sizeof(int));
 		memset(tempB, -1, CITIES*sizeof(int));
@@ -496,8 +494,8 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			if(count[i] == 0)
 				tempB[i] = i;
 		}
-		int *result2;//[CITIES] = {-1};
-		result2 = (int*)malloc(CITIES*sizeof(int));
+		int result2[CITIES];//[CITIES] = {-1};
+		//result2 = (int*)malloc(CITIES*sizeof(int));
 		int i = 0;
 		while(i < CITIES)
 		{
@@ -506,18 +504,17 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			//	result[i] = tempB[i];
 			i++;
 		}
-		int j = 0;
-		i = 0;
-		while( i < CITIES)
+		int j = 0, k = 0;
+		while( k < CITIES && j < CITIES)
 		{
-			if(tempB[i] == -1)
-				i++;
+			if(tempB[k] == -1)
+				k++;
 			else
 			{
 				if(result2[j] == -1)
 				{
-					result2[j] = tempB[i];
-					j++; i++;
+					result2[j] = tempB[k];
+					j++; k++;
 				}
 				else
 				{
@@ -525,6 +522,24 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 				}
 			}
 		}
+		/*for(int i = 0, j = 0; j < CITIES && i < CITIES;)
+		{
+			if(result2[j] == -1)
+			{
+				if(tempB[i] == -1)
+					i++;
+				else
+				{
+					result[j] = tempB[i];
+					i++;
+					j++;
+				}
+			}
+			else
+			{
+				j++;
+			}
+		}*/
 
 		for(int j = 0; j < CITIES; j++)
 			newA[j] = result2[j];
@@ -583,7 +598,8 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 				block_teacher[i] = subPop[threadIdx.x][i];
 		}
 		//PUT BARRIER HERE
-		atomicDec((unsigned int*)&var, 0);
+		//atomicDec((unsigned int*)&var, 0);
+		atomicAdd((int*)&var, -1);
 		while( var != 0 );
 		//
 		if(threadIdx.x == 0 && best_sol_dis == block_teacher_dis)
@@ -596,10 +612,11 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		}
 
 		//printf("All operations performed : %d\n", id);
-		atomicDec((unsigned int*)&itr, 0);
+		//atomicDec((unsigned int*)&itr, 0);
+		atomicAdd((int*)&itr, -1);
 		while(itr != 0);
 		free(result);
-		free(result2);
+		//free(result2);
 		free(newA);
 	}
 
