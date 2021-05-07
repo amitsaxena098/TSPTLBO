@@ -4,8 +4,8 @@
 #include<curand_kernel.h>
 #define PS 100
 #define SUB_PS 4
-#define CITIES 194
-#define CYCLES 400
+#define CITIES 280
+#define CYCLES 100
 #define CROSS_GLOBALTEACHER 0
 #define CROSS_LOCALTEACHER 1
 #define CROSS_MEAN 2
@@ -17,41 +17,8 @@ __device__ volatile int *best_sol;
 __device__ volatile int best_sol_dis;
 __device__ volatile int var = 100;
 __device__ volatile int itr = 100;
-__device__ int* mutation(int *tour,curandState *state ){
-	int *result;//[CITIES];
-	int i,j;
-	int crossleft, crossright;
-	result = (int*)malloc(CITIES*sizeof(int));
-	float randf = curand_uniform(&state[0]);
-		
-	crossleft = ((int)randf*100)%CITIES;
-	randf = curand_uniform(&state[0]);
-	crossright = ((int)randf*100)%CITIES;
-	if(crossleft > crossright)
-	{
-		int tmp = crossleft;
-		crossleft = crossright;
-		crossright = tmp;
-	}
-	while(crossleft >= crossright)
-	{
-		randf = curand_uniform(&state[0]);
-		crossleft = ((int)randf*100)%CITIES;
-		randf = curand_uniform(&state[0]);
-		crossright = ((int)randf*100)%CITIES;
-	}
-	for(int i = 0; i < CITIES; i++)
-	{
-		result[i] = tour[i];
-	}
-	for(i=crossleft,j=crossright;i<=crossright&&j>=crossleft;i++,j--)
-	{
-		result[i]=tour[j];
-	}
-	return result;
-	
-}
-__device__ int* viability_op(int *tour)
+
+__device__ void viability_op(int *tour)
 {
 	int tempA[CITIES], tempB[CITIES], tempC[CITIES];
 	memset(tempA, -1, CITIES*sizeof(int));
@@ -81,14 +48,12 @@ __device__ int* viability_op(int *tour)
 		if(count[i] == 0)
 			tempB[i] = i;
 	}
-	int *result;//[CITIES] = {-1};
-	result = (int*)malloc(CITIES*sizeof(int));
+	int result[CITIES];//[CITIES] = {-1};
 	int i = 0;
 	while(i < CITIES)
 	{
 		result[i] = tempA[i];
 		if(result[i] == -1) result[i] = tempC[i];
-		//	result[i] = tempB[i];
 		i++;
 	}
 	int j = 0;
@@ -110,53 +75,11 @@ __device__ int* viability_op(int *tour)
 			}
 		}
 	}
-	//for(int i = 0; i < CITIES; i++)
-	//	printf("%d ", result[i]);		
-//tour[i] = result[i];
-	return result;
+	for(int i = 0; i < CITIES; i++)
+		tour[i] = result[i];
 }
 
-__device__ void crossover(int *A,int *B, curandState *state){
-	int *C;
 
-	int crossleft, crossright;
-	float randf = curand_uniform(&state[0]);
-		
-	crossleft = ((int)randf*100)%CITIES;
-	randf = curand_uniform(&state[0]);
-	crossright = ((int)randf*100)%CITIES;
-	if(crossleft > crossright)
-	{
-		int tmp = crossleft;
-		crossleft = crossright;
-		crossright = tmp;
-	}
-	while(crossleft >= crossright)
-	{
-		randf = curand_uniform(&state[0]);
-		crossleft = ((int)randf*100)%CITIES;
-		randf = curand_uniform(&state[0]);
-		crossright = ((int)randf*100)%CITIES;
-	}
-	for(int i=crossleft;i<=crossright;i++)
-		A[i]=B[i];
-	
-        printf("\nAfter crossover \n" );
-	for(int i = 0; i < CITIES; i++)
-		printf("%d ", A[i]);	
-		
-        C=viability_op(A);
-        printf("\nAfter viability \n");
-	for(int i = 0; i < CITIES; i++)
-		printf("%d ", C[i]);
-		
-        A=mutation(C, state);
-		
-        printf("\nAfter mutation \n");
-	for(int i = 0; i < CITIES; i++)
-		printf("%d ", A[i]);	
-			
-}
 __global__ void setup_kernel(curandState *state)
 {
 	unsigned id = blockDim.x * blockIdx.x + threadIdx.x;
@@ -170,7 +93,6 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	__shared__ int mean[CITIES];
 	__shared__ int block_teacher[CITIES];
 	__shared__ int block_teacher_dis;
-//	__shared__ int global_dis;
 	unsigned id = threadIdx.x + blockIdx.x * blockDim.x;
 	
 	for(int j = 0; j < CITIES ; j++)
@@ -181,9 +103,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		best_sol_dis = INT_MAX;
 		best_sol = (volatile int*)malloc(CITIES*sizeof( volatile int));
 	}
-//	global_dis = INT_MAX;
 
-	
 	if(threadIdx.x == 0)
 	{
 		block_teacher_dis = INT_MAX;
@@ -201,14 +121,6 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	__syncthreads();
 	//Global Teacher
 	atomicMin((int*)&best_sol_dis, fitness[threadIdx.x]);
-	/*if( old != global_dis )
-	{
-		//best_sol = subPop[threadIdx.x];
-		best_sol_dis = global_dis;
-		printf("%d\n", best_sol_dis);
-		for(int i = 0; i < CITIES; i++)
-			best_sol[i] = subPop[threadIdx.x][i];
-	}*/
 	
 	__syncthreads();
 	if(threadIdx.x == 0 && 0)
@@ -250,9 +162,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		{
 			for(int j = 0; j < CITIES; j++)
 				mean[j] = mean[j]/SUB_PS;
-			int *mean_v = viability_op(mean);
-			for(int j = 0; j < CITIES; j++)
-				mean[j] = mean_v[j];
+			viability_op(mean);
 		}
 		//2. Teacher Iteration
 		int *newA;
@@ -290,8 +200,8 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 						}
 						for(int j=crossleft;j <= crossright;j++)
 							newA[j] = (int)best_sol[j];
-						C = viability_op(newA);
-						
+						viability_op(newA);
+						C = newA;
 						//2.2 MUTATION	
 						result = (int*)malloc(CITIES*sizeof(int));
 						
@@ -353,8 +263,8 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 						}
 						for(int j=crossleft;j <= crossright;j++)
 							newA[j] = block_teacher[j];
-						C = viability_op(newA);
-						
+						viability_op(newA);
+						C = newA;
 						//2.2 MUTATION	
 						result = (int*)malloc(CITIES*sizeof(int));
 						
@@ -415,8 +325,8 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 						}
 						for(int j=crossleft;j <= crossright;j++)
 							newA[j] = mean[j];
-						C = viability_op(newA);
-						
+						viability_op(newA);
+						C = newA;
 						//2.2 MUTATION	
 						result = (int*)malloc(CITIES*sizeof(int));
 						
@@ -476,8 +386,8 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 						}
 						for(int j=crossleft;j <= crossright;j++)
 							newA[j] = block_teacher[j];
-						C = viability_op(newA);
-						
+						viability_op(newA);
+						C = newA;
 						//2.2 MUTATION	
 						result = (int*)malloc(CITIES*sizeof(int));
 						
@@ -691,7 +601,6 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		free(result);
 		free(result2);
 		free(newA);
-		free(C);
 	}
 
 	if(blockIdx.x == 0 && threadIdx.x == 0)
@@ -740,18 +649,12 @@ int main()
 		for(int j = 0; j < numberOfCities; j++)
 			scanf("%d", &distanceMat[i*numberOfCities+j]);
 	}
-	//int *gpuDistanceMat;
-	//cudaMalloc(&gpuDistanceMat, numberOfCities*numberOfCities*sizeof(int));
-	//cudaMemcpy(gpuDistanceMat, distanceMat, numberOfCities*numberOfCities*sizeof(int), cudaMemcpyHostToDevice);
 	
 	int noOfBlocks = ceil((float)PS/SUB_PS);
 	int *population; //= (int*)malloc(PS*CITIES*sizeof(int));
 	cudaHostAlloc(&population, PS*CITIES*sizeof(int), cudaHostAllocMapped);
 	createPopulation(population);
 
-	//int *gpupopulation;
-	//cudaMalloc(&gpupopulation, PS*CITIES*sizeof(int));
-	//cudaMemcpy(gpupopulation, population, PS*CITIES*sizeof(int), cudaMemcpyHostToDevice);
 	setup_kernel<<<noOfBlocks,SUB_PS>>>(d_state);
 	tlboKernel<<<noOfBlocks, SUB_PS>>>(population, distanceMat, numberOfCities, d_state);
 		

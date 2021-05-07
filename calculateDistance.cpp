@@ -41,7 +41,8 @@ int main(int argc, char **argv)
 			dis[i][j] = ed;
 		}
 	}
-
+	
+	fprintf(output, "%d\n", numberOfCities);
 	for(int i = 0; i < numberOfCities; i++)
 	{
 		for(int j = 0; j < numberOfCities; j++)
