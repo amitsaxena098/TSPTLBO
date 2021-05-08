@@ -2,9 +2,9 @@
 #include<bits/stdc++.h>
 #include<curand.h>
 #include<curand_kernel.h>
-#define PS 100
+#define PS 500
 #define SUB_PS 4
-#define CITIES 1002
+#define CITIES 48
 //#define CYCLES 2000
 #define CROSS_GLOBALTEACHER 0
 #define CROSS_LOCALTEACHER 1
@@ -15,8 +15,8 @@ using namespace std;
 
 __device__ volatile int *best_sol;
 __device__ volatile int best_sol_dis;
-__device__ volatile unsigned int var = 100;
-__device__ volatile unsigned int itr = 100;
+__device__ volatile unsigned int var = PS;
+__device__ volatile unsigned int itr = PS;
 
 __device__ void viability_op(int *tour)
 {
@@ -141,7 +141,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		printf("%d\n", best_sol_dis);
 		for(int i = 0; i < CITIES; i++)
 			best_sol[i] = block_teacher[i];
-		var = 100;
+		var = PS;
 	}
 	if(threadIdx.x == 0 )
 		printf("Block = %d : Block Teacher = %d, Global teacher = %d\n",blockIdx.x, block_teacher_dis, best_sol_dis);
@@ -150,8 +150,8 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 	//	TEACHER PHASE
 		//1. Calculate Mean
 		if(blockIdx.x == 0 && threadIdx.x == 0 )
-			itr = 100;
-		while( itr != 100 );
+			itr = PS;
+		while( itr != PS );
 		memset(mean, 0, CITIES*sizeof(int));
 		for(int j = 0; j < CITIES; j++)
 			atomicAdd(&mean[j], subPop[threadIdx.x][j]);
@@ -170,7 +170,9 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		int newA_dis = 0;;
 		int *result;//[CITIES];
 		__syncthreads();
-		switch(threadIdx.x) //threadIdx.x == CROSS_GLOBALTEACHER)
+		randf = curand_uniform(&state[threadIdx.x]);
+		int crossType = ((int)(randf*100))%4;
+		switch(crossType) //threadIdx.x == CROSS_GLOBALTEACHER)
 		{
 			case CROSS_GLOBALTEACHER:
 					{
@@ -598,7 +600,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		//	printf("%d : %d\n",c, best_sol_dis);
 			for(int i = 0; i < CITIES; i++)
 				best_sol[i] = block_teacher[i];
-			var = 100;
+			var = PS;
 		}
 
 		//printf("All operations performed : %d\n", id);
