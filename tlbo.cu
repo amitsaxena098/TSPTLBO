@@ -5,7 +5,7 @@
 #define PS 100
 #define SUB_PS 4
 #define CITIES 1002
-#define CYCLES 2000
+//#define CYCLES 2000
 #define CROSS_GLOBALTEACHER 0
 #define CROSS_LOCALTEACHER 1
 #define CROSS_MEAN 2
@@ -86,7 +86,7 @@ __global__ void setup_kernel(curandState *state)
 	curand_init(1234, id, 0, &state[id]);
 }
 
-__global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOfCities, curandState *state)
+__global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOfCities, curandState *state, int CYCLES)
 {
 	__shared__ int subPop[SUB_PS][CITIES];
 	__shared__ int fitness[SUB_PS];
@@ -433,13 +433,24 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		}
 		
 	//	 LEARNER PHASE 	
-		randf = curand_uniform(&state[threadIdx.x]);
-		int randomK = ((int)(randf*100))%4;
-		while( randomK == threadIdx.x )
+	//	randf = curand_uniform(&state[threadIdx.x]);
+		int randomK = -1; //((int)(randf*100))%4;
+		
+		for(int i = 0; i < 4; i++)
+		{
+			if(i != threadIdx.x && fitness[i] <= fitness[threadIdx.x])
+			{
+				randomK = i;
+				break;
+			}
+		}
+		if(randomK == -1)
+			randomK = threadIdx.x;
+	/*	while( randomK == threadIdx.x && fitness[randomK] >= fitness[threadIdx.x] )
 		{
 			randf = curand_uniform(&state[threadIdx.x]);
 			randomK = ((int)(randf*100))%4;
-		}
+		}*/
 
 		for(int i = 0; i < CITIES; i++)
 			newA[i] = subPop[threadIdx.x][i];
@@ -460,12 +471,8 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 			randf = curand_uniform(&state[threadIdx.x]);
 			crossright = ((int)(randf*100))%CITIES;
 		}
-		if(newA == NULL)
-			printf("-----newA is null-----\n");
 		for(int j=crossleft;j <= crossright;j++)
 			newA[j] = subPop[randomK][j];
-	//	viability_op(newA);
-	//	C = newA;
 		int tempA[CITIES], tempB[CITIES], tempC[CITIES];
 		memset(tempA, -1, CITIES*sizeof(int));
 		memset(tempB, -1, CITIES*sizeof(int));
@@ -522,24 +529,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 				}
 			}
 		}
-		/*for(int i = 0, j = 0; j < CITIES && i < CITIES;)
-		{
-			if(result2[j] == -1)
-			{
-				if(tempB[i] == -1)
-					i++;
-				else
-				{
-					result[j] = tempB[i];
-					i++;
-					j++;
-				}
-			}
-			else
-			{
-				j++;
-			}
-		}*/
+		
 
 		for(int j = 0; j < CITIES; j++)
 			newA[j] = result2[j];
@@ -614,6 +604,7 @@ __global__ void tlboKernel(int *gpupopulation, int *gpuDistanceMat, int numberOf
 		//printf("All operations performed : %d\n", id);
 		//atomicDec((unsigned int*)&itr, 0);
 		atomicAdd((int*)&itr, -1);
+	
 		while(itr != 0);
 		free(result);
 		//free(result2);
@@ -661,7 +652,9 @@ int main(int argc, char **argv)
 	if(input == NULL)
 		printf("error: failed to open input file\n");
 
-	
+	int CYCLES;
+	sscanf(argv[2], "%d", &CYCLES);
+	printf("Cycles = %d\n", CYCLES);
 	curandState *d_state;
 	cudaMalloc(&d_state, sizeof(curandState));
 	
@@ -704,7 +697,7 @@ int main(int argc, char **argv)
 	createPopulation(population);
 
 	setup_kernel<<<noOfBlocks,SUB_PS>>>(d_state);
-	tlboKernel<<<noOfBlocks, SUB_PS>>>(population, distanceMat, numberOfCities, d_state);
+	tlboKernel<<<noOfBlocks, SUB_PS>>>(population, distanceMat, numberOfCities, d_state, CYCLES);
 		
 	cudaDeviceSynchronize();
 
