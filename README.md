@@ -24,4 +24,4 @@ How to Run:
 
 `./tlbo input.tsp NO_OF_ITERATIONS_OF_DTLBO`
 
-Please change the CITIES #define in tlbo.cu befor compilation.
+Please change the CITIES #define in tlbo.cu before compilation.
